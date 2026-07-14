@@ -1,5 +1,47 @@
 from fastapi import UploadFile, File, APIRouter, HTTPException
-from app.schemas.classify import ClassifyCreate, ClassifyResponse
+from app.schemas.classify import ClassifyRequest, ClassifyResponse
+from app.schemas.caption import CaptionResponse
+from app.services.classify_service import DistilBERTClassifier
+from app.services.caption_service import BLIP1CaptionService
+from PIL import Image
+import io
 
 
 router = APIRouter()
+classifier_service = DistilBERTClassifier()
+
+@router.post("/classify", response_model=ClassifyResponse)
+def classify_text(request: ClassifyRequest):
+    if not request.text.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty!")
+        
+    prediction = classifier_service.predict(request.text)
+    
+    return{
+        "text": request.text,
+        "prediction": prediction
+    }
+    
+blip_service = BLIP1CaptionService()
+
+@router.post("/classifyImage", response_model=ClassifyResponse)
+def generate_caption(file: UploadFile = File(...)):
+    if file.content_type not in ["image/jpeg", "image/png", "image/gif"]:
+        raise HTTPException(status_code=400, detail="File type not supported")
+    
+    
+    contents = file.file.read()
+    pil_image = Image.open(io.BytesIO(contents)).convert("RGB")
+    caption = blip_service.generate_caption(pil_image)
+    
+    
+    
+    if not caption.strip():
+        raise HTTPException(status_code=400, detail="Text cannot be empty!")
+        
+    prediction = classifier_service.predict(caption)
+    
+    return{
+        "text": caption,
+        "prediction": prediction
+    }
