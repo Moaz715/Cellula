@@ -1,14 +1,16 @@
 from fastapi import UploadFile, File, APIRouter, HTTPException
 from app.schemas.classify import ClassifyRequest, ClassifyResponse
-from app.schemas.caption import CaptionResponse
 from app.services.classify_service import DistilBERTClassifier
 from app.services.caption_service import BLIP1CaptionService
+from app.db.session import SQLiteDatabaseManager
 from PIL import Image
 import io
 
 
 router = APIRouter()
 classifier_service = DistilBERTClassifier()
+blip_service = BLIP1CaptionService()
+db = SQLiteDatabaseManager()
 
 @router.post("/classify", response_model=ClassifyResponse)
 def classify_text(request: ClassifyRequest):
@@ -17,12 +19,13 @@ def classify_text(request: ClassifyRequest):
         
     prediction = classifier_service.predict(request.text)
     
+    db.log_entry(input_type="text", content=request.text, prediction=prediction)
+    
     return{
         "text": request.text,
         "prediction": prediction
     }
     
-blip_service = BLIP1CaptionService()
 
 @router.post("/classifyImage", response_model=ClassifyResponse)
 def generate_caption(file: UploadFile = File(...)):
@@ -40,6 +43,8 @@ def generate_caption(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Text cannot be empty!")
         
     prediction = classifier_service.predict(caption)
+    
+    db.log_entry(input_type="image", content=caption, prediction=prediction)
     
     return{
         "text": caption,

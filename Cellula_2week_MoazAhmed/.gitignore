@@ -1,1 +1,5 @@
 venv/
+.env
+api_logs.db
+__pycache__/
+*.pyc
