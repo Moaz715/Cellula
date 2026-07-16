@@ -1,28 +1,54 @@
+import torch
+from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
+from peft import PeftModel
 from app.core.interfaces import TextClassifierInterface
 
 class DistilBERTClassifier(TextClassifierInterface):
     def __init__(self):
-        # We call load_model() when the class is created so it is ready for web traffic
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        self.labels = [
+            "safe", "violent crimes", "non-violent crimes", "unsafe",
+            "suicide & self-harm", "elections", "sex-related crimes", 
+            "child sexual exploitation", "unknown s-type"
+        ]
+        
+        self.tokenizer = None
+        self.model = None
+        
         self.load_model()
         
     def load_model(self) -> None:
-        """Blueprint method to handle downloading or loading weights into memory."""
-        # PLACEHOLDER WHAT TO ADD LATER: 
-        # 1. Import AutoTokenizer and AutoModelForSequenceClassification from 'transformers'.
-        # 2. Load your fine-tuned LoRA DistilBERT weights from your local disk.
-        # Example: self.tokenizer = AutoTokenizer.from_pretrained("./my-lora-model")
-        # Example: self.model = AutoModelForSequenceClassification.from_pretrained("./my-lora-model")
-        pass
+        """Loads the base model and attaches the custom LoRA weights."""
+        print("Loading DistilBERT Tokenizer...")
+        self.tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
+        
+        print("Loading DistilBERT Base Model...")
+        base_model = DistilBertForSequenceClassification.from_pretrained(
+            "distilbert-base-uncased", num_labels=9
+        )
+        
+        print("Attaching LoRA Adapters...")
+        lora_path = "./distilbert_lora_toxic_model2"
+        self.model = PeftModel.from_pretrained(base_model, lora_path)
+        
+        self.model.to(self.device)
+        self.model.eval()
+        print("DistilBERT Classifier is ready!")
 
     def predict(self, text: str) -> str:
-        """Blueprint method that MUST accept a string and MUST return a string label."""
-        # PLACEHOLDER WHAT TO ADD LATER:
-        # 1. Pass the 'text' string through self.tokenizer()
-        # 2. Feed the tokenized input into self.model()
-        # 3. Apply torch.argmax() to the output logits to get the predicted class ID.
-        # 4. Map the ID to your string (e.g., if ID == 1 return "Toxic", else "Safe")
-        
-        # Returning a dummy value so you can test the CSV database right now
-        return "toxic_placeholder"
-    
-    
+        """Accepts a string, runs inference, and returns the string label."""
+        with torch.inference_mode():
+            inputs = self.tokenizer(
+                text, 
+                return_tensors="pt", 
+                truncation=True, 
+                padding=True, 
+                max_length=128
+            ).to(self.device)
+            
+            outputs = self.model(**inputs)
+            
+            predicted_class_id = torch.argmax(outputs.logits, dim=1).item()
+            
+            return self.labels[predicted_class_id]
