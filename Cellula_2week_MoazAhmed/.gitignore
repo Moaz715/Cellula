@@ -8,4 +8,3 @@ __pycache__/
 *.pyc
 
 api_logs.csv
-api_logs.db
