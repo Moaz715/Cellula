@@ -1,6 +1,6 @@
 from fastapi import UploadFile, File, APIRouter, HTTPException
 from app.schemas.classify import ClassifyRequest, ClassifyResponse
-from app.services.classify_service import ToxicLSTM
+from app.services.classify_service import ToxicLSTMClassifier
 from app.services.caption_service import BLIP1CaptionService
 from app.db.session import SQLiteDatabaseManager, CSVDatabaseManager
 from PIL import Image
@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 
 router = APIRouter()
-classifier_service = ToxicLSTM()
+classifier_service = ToxicLSTMClassifier()
 blip_service = BLIP1CaptionService()
 db = CSVDatabaseManager()
 

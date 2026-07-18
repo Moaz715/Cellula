@@ -3,6 +3,7 @@ import torch.nn as nn
 from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
 from peft import PeftModel
 from app.core.interfaces import TextClassifierInterface
+import os
 
 def init_lstm_weights(lstm):
     for name, param in lstm.named_parameters():
@@ -50,6 +51,44 @@ class ToxicLSTM(nn.Module):
 
         pooled = torch.cat([max_pool, avg_pool], dim=1)
         return self.classifier(self.dropout(pooled))
+
+class ToxicLSTMClassifier(TextClassifierInterface):
+    def __init__(self):
+        self.model = None
+        self.tokenizer = None
+        self.id2label = {}
+        self.load_model()
+
+    def load_model(self) -> None:
+        bundle_path = os.path.join(os.getcwd(), "toxic_lstm_deployment.pth")
+        if not os.path.exists(bundle_path):
+            raise FileNotFoundError(f"Deployment bundle missing at: {bundle_path}")
+            
+        bundle = torch.load(bundle_path, map_location=torch.device('cpu'))
+        self.id2label = bundle['id2label']
+        
+        self.model = ToxicLSTM(
+            embedding_weights=bundle['embedding_weights'],
+            hidden_dim=bundle['hidden_dim'],
+            num_classes=bundle['num_classes']
+        )
+        
+        self.model.load_state_dict(bundle['model_state_dict'])
+        self.model.eval()
+        
+        self.tokenizer = DistilBertTokenizer.from_pretrained('distilbert-base-uncased')
+        print("LSTM Classifier ready!")
+
+    def predict(self, text: str) -> str:
+        inputs = self.tokenizer(
+            text, max_length=128, padding='max_length',
+            truncation=True, return_tensors='pt'
+        )
+        with torch.no_grad():
+            logits = self.model(inputs['input_ids'], inputs['attention_mask'])
+            prediction_idx = logits.argmax(-1).item()
+            
+        return self.id2label[prediction_idx]
 
 class DistilBERTClassifier(TextClassifierInterface):
     def __init__(self):
