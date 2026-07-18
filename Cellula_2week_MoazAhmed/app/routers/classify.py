@@ -2,7 +2,7 @@ from fastapi import UploadFile, File, APIRouter, HTTPException
 from app.schemas.classify import ClassifyRequest, ClassifyResponse
 from app.services.classify_service import ToxicLSTMClassifier
 from app.services.caption_service import BLIP1CaptionService
-from app.db.session import SQLiteDatabaseManager, CSVDatabaseManager
+from app.db.session import CSVDatabaseManager
 from PIL import Image
 import io
 import os
