@@ -21,7 +21,7 @@ class DistilBERTClassifier(TextClassifierInterface):
     def load_model(self) -> None:
         """Loads the base model and attaches the custom LoRA weights."""
         print("Loading DistilBERT Tokenizer...")
-        self.tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
+        self.tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased", torch_dtype=torch.float16, low_cpu_mem_usage=True)
         
         print("Loading DistilBERT Base Model...")
         base_model = DistilBertForSequenceClassification.from_pretrained(

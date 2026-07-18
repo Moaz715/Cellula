@@ -13,7 +13,7 @@ class BLIP1CaptionService():
         
     def _load_model(self):
         model_name = "Salesforce/blip-image-captioning-base"
-        self.processor = BlipProcessor.from_pretrained(model_name)
+        self.processor = BlipProcessor.from_pretrained(model_name, torch_dtype=torch.float16, low_cpu_mem_usage=True)
         self.model = BlipForConditionalGeneration.from_pretrained(model_name)
         
         
