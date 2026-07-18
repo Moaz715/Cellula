@@ -5,6 +5,9 @@ from app.services.caption_service import BLIP1CaptionService
 from app.db.session import SQLiteDatabaseManager, CSVDatabaseManager
 from PIL import Image
 import io
+import os
+import pandas as pd
+from fastapi.responses import JSONResponse
 
 
 router = APIRouter()
@@ -50,3 +53,17 @@ def generate_caption(file: UploadFile = File(...)):
         "text": caption,
         "prediction": prediction
     }
+
+
+
+@router.get("/logs")
+def get_database_logs():
+    csv_path = os.path.join(os.getcwd(), os.getenv("CSV_LOG_FILE", "api_logs.csv"))
+    if not os.path.exists(csv_path):
+        return JSONResponse(content=[])
+    
+    try:
+        df = pd.read_csv(csv_path)
+        return df.to_dict(orient="records")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

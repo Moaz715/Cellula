@@ -29,7 +29,7 @@ class DistilBERTClassifier(TextClassifierInterface):
         )
         
         print("Attaching LoRA Adapters...")
-        lora_path = "./distilbert_lora_toxic_model2"
+        lora_path = "./my_lora_adapter"
         self.model = PeftModel.from_pretrained(base_model, lora_path)
         
         self.model.to(self.device)

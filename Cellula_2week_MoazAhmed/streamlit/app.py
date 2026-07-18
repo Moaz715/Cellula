@@ -1,5 +1,7 @@
 import streamlit as st
 import requests
+import pandas as pd
+
 
 # The URL where your FastAPI server is running locally
 FASTAPI_URL = "http://127.0.0.1:8000"
@@ -8,7 +10,7 @@ st.set_page_config(page_title="Safety Moderator Dashboard", layout="centered")
 st.title("🛡️ Content Moderation System")
 st.write("Analyze text queries or uploaded images through the FastAPI backend.")
 
-tab1, tab2 = st.tabs(["💬 Text Classification", "🖼️ Image Classification"])
+tab1, tab2, tab3 = st.tabs(["💬 Text Classification", "🖼️ Image Classification", "📊 View Database Logs"])
 
 with tab1:
     st.subheader("Text Query Moderation")
@@ -69,3 +71,23 @@ with tab2:
                         st.error(f"Backend Error ({response.status_code}): {response.text}")
                 except Exception as e:
                     st.error(f"Failed to connect to backend: {e}")
+with tab3:
+    st.subheader("Historical Logged Transactions")
+    
+    if st.button("🔄 Refresh Database Log View"):
+        st.rerun()
+
+    try:
+        response = requests.get(f"{FASTAPI_URL}/api/logs")
+        if response.status_code == 200:
+            data = response.json()
+            if not data:
+                st.info("The database is empty. Start making predictions!")
+            else:
+                df_logs = pd.DataFrame(data)
+                st.metric(label="Total Logged Items", value=len(df_logs))
+                st.dataframe(df_logs.sort_values(by="timestamp", ascending=False), use_container_width=True)
+        else:
+            st.error("Failed to fetch logs.")
+    except Exception as e:
+        st.error(f"Could not connect: {e}")

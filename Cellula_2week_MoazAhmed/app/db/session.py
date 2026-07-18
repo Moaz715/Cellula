@@ -43,7 +43,8 @@ class SQLiteDatabaseManager:
 
 
 class CSVDatabaseManager:
-    def __init__(self, filename: str = "api_logs.csv"):
+    def __init__(self):
+        filename = os.getenv("CSV_LOG_FILE", "api_logs.csv")
         self.filepath = os.path.join(os.getcwd(), filename)
         self.headers = ["timestamp", "input_type", "content", "prediction"]
         self._initialize_file()
