@@ -4,7 +4,7 @@ import pandas as pd
 
 
 # The URL where your FastAPI server is running locally
-FASTAPI_URL = "http://127.0.0.1:8000"
+FASTAPI_URL = st.secrets.get("API_URL","http://127.0.0.1:8000")
 
 st.set_page_config(page_title="Safety Moderator Dashboard", layout="centered")
 st.title("🛡️ Content Moderation System")
