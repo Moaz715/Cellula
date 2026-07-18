@@ -1,6 +1,11 @@
 venv/
-.env
-api_logs.db
+
+*.pth
+distilbert_lora_toxic_model2/
+my_lora_adapter/
+
 __pycache__/
 *.pyc
+
 api_logs.csv
+api_logs.db
