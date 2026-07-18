@@ -2,7 +2,7 @@ from fastapi import UploadFile, File, APIRouter, HTTPException
 from app.schemas.classify import ClassifyRequest, ClassifyResponse
 from app.services.classify_service import DistilBERTClassifier
 from app.services.caption_service import BLIP1CaptionService
-from app.db.session import SQLiteDatabaseManager
+from app.db.session import SQLiteDatabaseManager, CSVDatabaseManager
 from PIL import Image
 import io
 
@@ -10,7 +10,7 @@ import io
 router = APIRouter()
 classifier_service = DistilBERTClassifier()
 blip_service = BLIP1CaptionService()
-db = SQLiteDatabaseManager()
+db = CSVDatabaseManager()
 
 @router.post("/classify", response_model=ClassifyResponse)
 def classify_text(request: ClassifyRequest):

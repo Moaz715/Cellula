@@ -3,3 +3,4 @@ venv/
 api_logs.db
 __pycache__/
 *.pyc
+api_logs.csv
