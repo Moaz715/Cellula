@@ -32,7 +32,7 @@ def classify_text(request: ClassifyRequest):
 
 @router.post("/classifyImage", response_model=ClassifyResponse)
 def generate_caption(file: UploadFile = File(...)):
-    if file.content_type not in ["image/jpeg", "image/png", "image/gif"]:
+    if file.content_type not in ["image/jpeg", "image/png"]:
         raise HTTPException(status_code=400, detail="File type not supported")
     
     
@@ -58,7 +58,7 @@ def generate_caption(file: UploadFile = File(...)):
 
 @router.get("/logs")
 def get_database_logs():
-    csv_path = os.path.join(os.getcwd(), os.getenv("CSV_LOG_FILE", "api_logs.csv"))
+    csv_path = os.path.join(os.getcwd(), os.getenv("CSV_LOG_FILE"))
     if not os.path.exists(csv_path):
         return JSONResponse(content=[])
     

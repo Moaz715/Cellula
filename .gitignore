@@ -1,10 +1,12 @@
+.vector_cache/
+.vscode/
 venv/
 
 *.pth
 distilbert_lora_toxic_model2/
 my_lora_adapter/
-
+.env
 __pycache__/
 *.pyc
-
-api_logs.csv
+/*.py
+*.csv

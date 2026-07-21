@@ -1,4 +1,3 @@
-import sqlite3
 import os
 from datetime import datetime
 from dotenv import load_dotenv
@@ -10,7 +9,7 @@ load_dotenv()
 
 class CSVDatabaseManager:
     def __init__(self):
-        filename = os.getenv("CSV_LOG_FILE", "api_logs.csv")
+        filename = os.getenv("CSV_LOG_FILE")
         self.filepath = os.path.join(os.getcwd(), filename)
         self.headers = ["timestamp", "input_type", "content", "prediction"]
         self._initialize_file()
