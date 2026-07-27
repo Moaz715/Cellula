@@ -12,22 +12,35 @@ class ResponseGenerator:
             api_key=os.getenv("API_KEY"),
             base_url='https://openrouter.ai/api/v1',
             model='openrouter/free',
-            temperature=0.5
+            temperature=0.3
         )
-        self.memory = ConversationBufferMemory(memory_key="history")
+        self.memory = ConversationBufferWindowMemory(k=5, memory_key="history")
         
 
     def generate_answer(self, question: str, context: list[str]) -> str:
         history = self.memory.load_memory_variables({})["history"]
-        temp = """
-        you are assistant, Answer the next Question using provided context,
-        If you don't know the answer, just say you don't know.
-        answer should be within 200 words or lower only
-        ## Chat History :
+        temp = """You are a helpful and friendly AI assistant.
+
+        ### Instructions:
+        1. Conversational & Personal Inputs:
+            - For greetings, casual chat, or questions about the user (e.g., their name), use the Chat History to answer naturally.
+
+        2. Technical Questions:
+            - Use the provided Context AND the Chat History to answer questions accurately.
+            - If the answer was mentioned previously in the Chat History (e.g., facts shared by the user), you are allowed to use it!
+            - If a question cannot be answered using either the Context OR the Chat History, explicitly state that you do not know.
+            - STRICT RULE: DO NOT use your general knowledge or outside information to answer questions. If the fact is not explicitly in the Context or History, you must stop at "I do not know."
+
+        3. Tone & Length:
+            - Structure your answers to always be 3 bullet points.
+
+        ## Chat History:
         {history}
-        ## Context :
+
+        ## Context:
         {context}
-        ## Question :
+
+        ## User Question:
         {Question}
         """
         
