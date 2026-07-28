@@ -54,7 +54,7 @@ if prompt := st.chat_input("Ask a question about the data..."):
             if is_casual:
                 context = []
             else:
-                context = vector_manager.similarity_search(prompt, k=3)
+                context = vector_manager.similarity_search(prompt, k=5)
             
             response = st.session_state.generator.generate_answer(prompt, context)
             st.markdown(response)
