@@ -1,4 +1,4 @@
-from langchain_classic.document_loaders import TextLoader
+from langchain_community.document_loaders import TextLoader
 from langchain_core.documents import Document
 class DocumentLoader:
     
