@@ -1,24 +1,27 @@
+# src/generator.py
+import os
 from langchain_openai import ChatOpenAI
-from langchain_classic.chains import ConversationChain
 from langchain_classic.memory import ConversationBufferWindowMemory
 from langchain_core.prompts import PromptTemplate
 from dotenv import load_dotenv
-from transformers import pipeline
-import os
+
 load_dotenv()
 
-class ResponseGenerator():
+class ResponseGenerator:
     def __init__(self):
-        self.intentModel = pipeline("zero-shot-classification", model="typeform/distilbert-base-uncased-mnli")
-        self.labels = ["generate code", "explain code"]
         self.model = ChatOpenAI(
             api_key=os.getenv("API_KEY"),
             base_url='https://openrouter.ai/api/v1',
             model='openrouter/free',
-            temperature=0.3
+            temperature=0.3,
+            streaming=True
         )
-        self.memory = ConversationBufferWindowMemory(k=5)
-        temp = """You are a senior software engineer. Explain the following code clearly and concisely and in detail. Do not invent any details that are not present in the query.
+        
+        
+        self.memory = ConversationBufferWindowMemory(k=5, memory_key="history")
+        
+        
+        explain_temp = """You are a senior software engineer. Explain the following code clearly and concisely and in detail. Do not invent any details that are not present in the query.
         
         Previous Conversation:
         {history}
@@ -26,18 +29,54 @@ class ResponseGenerator():
         Query:
         {input}
         """
-        self.prompt = PromptTemplate(input_variables=["history", "input"], template=temp)
-        self.chain = ConversationChain(
-            llm=self.model,
-            memory=self.memory,
-            prompt=self.prompt
+        self.explain_prompt = PromptTemplate(input_variables=["history", "input"], template=explain_temp)
+        
+       
+        generate_temp = """You are an expert Python coding assistant. 
+        Use the provided context chunks to answer the user's question. 
+        
+        Rules:
+        1. Always explain your logic briefly.
+        2. You MUST wrap your final executable code in standard ```python ... ``` markdown blocks.
+        
+        Verified Context:
+        {context}
+
+        Previous Conversation:
+        {history}
+        
+        Query:
+        {input}
+        """
+        self.generate_prompt = PromptTemplate(input_variables=["history", "context", "input"], template=generate_temp)
+
+    def explain_answer(self, query: str):
+        history = self.memory.load_memory_variables({})["history"]
+        prompt_str = self.explain_prompt.format(
+            history=history, 
+            input=query
+        )
+        response_stream = self.model.stream(prompt_str)
+        return response_stream
+
+    def generate_answer(self, query: str, context_chunks: list[str]):
+        history = self.memory.load_memory_variables({})["history"]
+        
+        combined_context = "\n\n".join(context_chunks)
+        
+        prompt_str = self.generate_prompt.format(
+            history=history, 
+            context=combined_context, 
+            input=query
         )
         
-    
-    def classify_intent(self, query):
-        res = self.intentModel(query, self.labels)
-        return res['labels'][0]
-    
-    def explain(self, query):
-        res = self.chain.predict(input=query)
-        return res
+        response_stream = self.model.stream(prompt_str)
+        
+        return response_stream
+
+    def save_to_memory(self, query: str, final_response: str):
+        """
+        Because we are streaming the output in Streamlit, we must manually 
+        save the final compiled string to LangChain's memory after it finishes streaming.
+        """
+        self.memory.save_context({"input": query}, {"output": final_response})

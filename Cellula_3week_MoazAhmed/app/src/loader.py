@@ -3,7 +3,7 @@ from langchain_core.documents import Document
 from datasets import load_dataset
 class DataLoader:
     @staticmethod
-    def load(self)->list[Document]:
+    def load()->list[Document]:
         hf_data = load_dataset('openai/openai_humaneval', split='test')
         
         documents = []
@@ -18,5 +18,6 @@ class DataLoader:
                 }
             )
             documents.append(doc)
+        return documents
         
         
