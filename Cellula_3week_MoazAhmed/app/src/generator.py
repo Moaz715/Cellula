@@ -21,7 +21,10 @@ class ResponseGenerator:
         self.memory = ConversationBufferWindowMemory(k=5, memory_key="history")
         
         
-        explain_temp = """You are a senior software engineer. Explain the following code clearly and concisely and in detail. Do not invent any details that are not present in the query.
+        explain_temp = """You are a senior software engineer. Explain the following code or concept briefly and concisely.
+        STRICT RULES: 
+        1. Keep your explanation extremely short (maximum 3-4 sentences or a few short bullet points).
+        2. Do NOT invent details. Do NOT output long essays.
         
         Previous Conversation:
         {history}
@@ -32,19 +35,19 @@ class ResponseGenerator:
         self.explain_prompt = PromptTemplate(input_variables=["history", "input"], template=explain_temp)
         
        
-        generate_temp = """You are an expert Python coding assistant. 
-        Use the provided context chunks to answer the user's question. 
-        
-        Rules:
-        1. Always explain your logic briefly.
-        2. You MUST wrap your final executable code in standard ```python ... ``` markdown blocks.
-        
-        Verified Context:
+        generate_temp = """You are an expert Python coding assistant.
+        STRICT RULES: 
+        1. Base your code solution ONLY on the provided verified context chunks.
+        2. ALWAYS wrap your final executable code in a standard markdown block: ```python ... ```
+        3. The context includes 'Official Tests'. You MUST append these exact tests to the bottom of your code block.
+        4. Add `print("All tests passed successfully!")` at the very end of the code block so the user knows the assertions succeeded.
+
+        Verified Context (Code & Tests):
         {context}
 
         Previous Conversation:
         {history}
-        
+
         Query:
         {input}
         """
