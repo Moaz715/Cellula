@@ -3,7 +3,7 @@ from langchain_core.documents import Document
 import os
 APP_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHROMA_PATH = os.path.join(APP_DIR, "data", "chroma_data")
-print(f"DEBUG: Loading ChromaDB from: {CHROMA_PATH}")
+
 class ChromaStore:
     def __init__(self, embedding_model):
         self.embedding_model = embedding_model

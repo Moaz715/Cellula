@@ -1,7 +1,9 @@
 import os
 from dotenv import load_dotenv
 load_dotenv()
-os.environ['HF_HOME'] = os.getenv("D_PATH")
+d_path = os.getenv("D_PATH")
+if d_path:
+    os.environ['HF_HOME'] = d_path
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
 class VectorEmbedder:
