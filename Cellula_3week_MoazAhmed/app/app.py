@@ -18,7 +18,7 @@ from src.reformulator import QueryReformulator
 from src.executor import CodeExecutor
 
 st.set_page_config(page_title="Corrective RAG Copilot", layout="wide")
-st.title("🛠️ Complete AI Code Copilot")
+st.title("LLM Coding")
 
 # 4. Load Shared Resources
 @st.cache_resource
@@ -100,7 +100,6 @@ if prompt := st.chat_input("Ask a coding question..."):
         st.rerun()
 
     else:
-        # Corrective RAG Path
         with st.spinner("Searching vector store (k=10)..."):
             raw_docs = store.vector_db.similarity_search(standalone_prompt, k=10)
 
@@ -108,12 +107,18 @@ if prompt := st.chat_input("Ask a coding question..."):
             verified_chunks = []
             for doc in raw_docs:
                 if grader.check_relevance(standalone_prompt, doc.page_content):
-                    # Extract dataset tests from metadata
-                    test_code = doc.metadata.get("test", "# No official tests available.")
-                    combined_chunk = f"Code Reference:\n{doc.page_content}\n\nOfficial Tests:\n{test_code}"
+                    
+                    test_code = doc.metadata.get("test_code", "# No official tests available.")
+                    
+                    solution_code = doc.metadata.get("solution", "# No official solution provided.") 
+                    
+                    combined_chunk = (
+                        f"Code Reference (Prompt):\n{doc.page_content}\n\n"
+                        f"Official Solution:\n{solution_code}\n\n"
+                        f"Official Tests:\n{test_code}"
+                    )
                     verified_chunks.append(combined_chunk)
 
-        # Fallback Trigger
         if len(verified_chunks) == 0:
             st.session_state.awaiting_user_solution = True
             st.session_state.unanswered_query = standalone_prompt
@@ -149,7 +154,7 @@ if st.session_state.awaiting_user_solution:
                 metadata={
                     "source": "user_contribution", 
                     "original_query": st.session_state.unanswered_query,
-                    "test": "# User contribution - no dataset test available."
+                    "test_code": "# User contribution - no dataset test available."
                 }
             )
             st.success("Solution saved! Run your query again.")

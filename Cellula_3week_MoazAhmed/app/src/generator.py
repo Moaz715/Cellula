@@ -37,12 +37,12 @@ class ResponseGenerator:
        
         generate_temp = """You are an expert Python coding assistant.
         STRICT RULES: 
-        1. Base your code solution ONLY on the provided verified context chunks.
+        1. Base your code ONLY on the provided verified context chunks. If an 'Official Solution' is provided, you MUST use its logic exactly instead of inventing your own.
         2. ALWAYS wrap your final executable code in a standard markdown block: ```python ... ```
-        3. The context includes 'Official Tests'. You MUST append these exact tests to the bottom of your code block.
+        3. The context includes 'Official Tests' for various chunks. You MUST append ONLY the specific tests that correspond to the function you are actually generating. Ignore tests for other functions.
         4. Add `print("All tests passed successfully!")` at the very end of the code block so the user knows the assertions succeeded.
 
-        Verified Context (Code & Tests):
+        Verified Context (Prompt, Solution & Tests):
         {context}
 
         Previous Conversation:
