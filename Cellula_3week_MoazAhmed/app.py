@@ -1,12 +1,16 @@
 # app.py
 import os
+import sys
+__import__('pysqlite3')
+sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 from dotenv import load_dotenv
 import re
 
 # 1. LOAD ENV VARS FIRST
 load_dotenv()
-if os.getenv("D_PATH"):
-    os.environ['HF_HOME'] = os.getenv("D_PATH")
+d_path = os.getenv("D_PATH")
+if d_path:
+    os.environ['HF_HOME'] = d_path
 
 import streamlit as st
 from src.embedder import VectorEmbedder
