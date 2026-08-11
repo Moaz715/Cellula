@@ -1,61 +1,106 @@
-import os
-import json
+# main.py
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from contextlib import asynccontextmanager
 
-# Define the file path (adjust if you named it differently)
-file_path = "raw_humaneval_array.json"
+# Imported matching Pydantic schemas
+from schemas import ChatMessage, UserRequest, CodeExecutionRequest, CodeExecutionResponse, SolutionRequest
+from src.embedder import VectorEmbedder
+from src.vectorStore import ChromaStore
+from src.grader2 import RelevanceGrader
+from src.generator import ResponseGenerator
+from src.intentClassifier import IntentClassifier
+from src.reformulator import QueryReformulator
+from src.executor import CodeExecutor
 
-print("=== Starting Data Integrity Check ===")
+resources = {}
 
-# 1. Check if the file actually exists
-if not os.path.exists(file_path):
-    print(f"❌ Error: The file '{file_path}' was not found.")
-    print("Please make sure you ran 'ingest.py' successfully first.")
-    exit(1)
-else:
-    print(f"✅ Success: Found '{file_path}'.")
-
-# 2. Check the file size
-file_size_kb = os.path.getsize(file_path) / 1024
-print(f"ℹ️ File Size: {file_size_kb:.2f} KB")
-
-try:
-    # 3. Try to parse the JSON data
-    with open(file_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    print("✅ Success: JSON syntax is valid and readable.")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    embedder = VectorEmbedder()
+    store = ChromaStore(embedding_model=embedder.get_embedding_model())
+    store.load()
     
-    # 4. Verify the number of problems (HumanEval contains exactly 164 problems)
-    total_items = len(data)
-    print(f"ℹ️ Total items found: {total_items}")
-    if total_items == 164:
-        print("✅ Success: All 164 HumanEval items are present.")
-    else:
-        print(f"⚠️ Warning: Expected 164 items, but found {total_items}.")
+    resources["store"] = store
+    resources["grader"] = RelevanceGrader(threshold=0.5)
+    resources["intent_cls"] = IntentClassifier()
+    resources["reformulator"] = QueryReformulator()
+    resources["generator"] = ResponseGenerator()
+    yield
+    resources.clear()
 
-    # 5. Check structural completeness of the first item
-    required_keys = ["prompt", "task_id", "entry_point", "solution", "test_code"]
-    first_item = data[0]
-    missing_keys = [key for key in required_keys if key not in first_item]
+app = FastAPI(title="AI Code Copilot API", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.post('/api/chat')
+async def chat(request: UserRequest):
+    reformulator = resources["reformulator"]
+    intent_cls = resources["intent_cls"]
+    store = resources["store"]
+    grader = resources["grader"]
+    generator = resources["generator"]
     
-    if not missing_keys:
-        print("✅ Success: All required fields are present in the dataset.")
-    else:
-        print(f"❌ Error: Missing keys {missing_keys} in the data structure.")
+    last10_history = [m.model_dump() for m in request.history[-10:]]
+    new_prompt = reformulator.reformulate(request.prompt, last10_history)
+    
+    intent = intent_cls.classify(request.prompt)
+    
+    if intent == 'EXPLAIN':
+        raw_stream = generator.explain_answer(new_prompt)
+        return StreamingResponse(
+            (chunk.content for chunk in raw_stream), 
+            media_type="text/event-stream"
+        )
+    
+    db_docs = store.vector_db.similarity_search(new_prompt, k=10)
+    final_docs = []
+    for doc in db_docs:
+        if grader.check_relevance(new_prompt, doc.page_content):
+            test_code = doc.metadata.get("test_code", "# No official tests available.")
+            solution_code = doc.metadata.get("solution", "# No official solution provided.")
+            combined_chunk = f"Prompt:\n{doc.page_content}\n\nSolution:\n{solution_code}\n\nTests:\n{test_code}"
+            final_docs.append(combined_chunk)
 
-    # 6. Print a preview sample of the first problem
-    print("\n=== Data Sample Preview ===")
-    print(f"Task ID    : {first_item.get('task_id')}")
-    print(f"Entry Point: {first_item.get('entry_point')}")
-    print("-" * 30)
-    print("Prompt Snippet:")
-    # Print just the first few lines of the prompt
-    prompt_lines = first_item.get('prompt', '').split('\n')[:5]
-    print('\n'.join(prompt_lines) + "\n...")
-    print("-" * 30)
+    if not final_docs:
+        return {
+            "status": "fallback",
+            "intent": intent,
+            "message": "Cross-Encoder rejected all chunks. Context missing in DB.",
+            "unanswered_query": new_prompt
+        }
 
-except json.JSONDecodeError:
-    print("❌ Error: The file exists but contains corrupted/invalid JSON format.")
-except Exception as e:
-    print(f"❌ An unexpected error occurred: {str(e)}")
+    raw_stream = generator.generate_answer(new_prompt, final_docs)
+    return StreamingResponse(
+        (chunk.content for chunk in raw_stream),
+        media_type="text/event-stream"
+    )
 
-print("\n=== Validation Complete ===")
+@app.post("/api/execute", response_model=CodeExecutionResponse)
+def execute_code(request: CodeExecutionRequest):
+    output, success = CodeExecutor.execute_python_code(request.code)
+    return {"output": output, "success": success}
+    
+@app.post("/api/solution")
+def save_solution(request: SolutionRequest):
+    store = resources["store"]
+    
+    searchable_text = f"def user_solution():\n    \"\"\"{request.query}\"\"\""
+    
+    store.add_document(
+        code_text=searchable_text, 
+        metadata={
+            "source": "user_contribution",
+            "original_query": request.query,
+            "solution": request.code.strip(),
+            "test_code": "# User contribution - no dataset test available."
+        }
+    )
+    return {"status": "success", "message": "Solution indexed into vector DB."}
