@@ -1,10 +1,16 @@
-# main.py
-from fastapi import FastAPI, HTTPException
+import os
+import sqlite3
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+load_dotenv()
+d_path = os.getenv("D_PATH")
+if d_path:
+    os.environ['HF_HOME'] = d_path
+from faster_whisper import WhisperModel
 
-# Imported matching Pydantic schemas
 from schemas import ChatMessage, UserRequest, CodeExecutionRequest, CodeExecutionResponse, SolutionRequest
 from src.embedder import VectorEmbedder
 from src.vectorStore import ChromaStore
@@ -13,6 +19,15 @@ from src.generator import ResponseGenerator
 from src.intentClassifier import IntentClassifier
 from src.reformulator import QueryReformulator
 from src.executor import CodeExecutor
+
+
+def get_live_schema(db_path: str = "app_database.db"):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%';")
+    tables = cursor.fetchall()
+    conn.close()
+    return "\n\n".join([row[0] for row in tables if row[0] is not None])
 
 resources = {}
 
@@ -27,6 +42,7 @@ async def lifespan(app: FastAPI):
     resources["intent_cls"] = IntentClassifier()
     resources["reformulator"] = QueryReformulator()
     resources["generator"] = ResponseGenerator()
+    resources["whisper"] = WhisperModel("tiny.en", device="cpu", compute_type="int8")
     yield
     resources.clear()
 
@@ -104,3 +120,47 @@ def save_solution(request: SolutionRequest):
         }
     )
     return {"status": "success", "message": "Solution indexed into vector DB."}
+
+
+@app.post("/api/voice-query")
+async def voice_query(audio_file: UploadFile = File(...)):
+    whisper = resources["whisper"]
+    generator = resources["generator"]
+    
+    temp_filename = f"temp_{audio_file.filename}"
+    
+    
+    with open(temp_filename, "wb") as buffer:
+        buffer.write(await audio_file.read())
+        
+    try:
+        segments, _ = whisper.transcribe(temp_filename, beam_size=5)
+        transcript = " ".join([segment.text for segment in segments]).strip()
+        
+        if not transcript:
+            raise HTTPException(status_code=400, detail="Audio transcript was empty.")
+            
+        schema = get_live_schema("app_database.db")
+        sql_query = generator.generate_sql(query=transcript, schema=schema)
+        
+        conn = sqlite3.connect("app_database.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(sql_query)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        results = [dict(row) for row in rows]
+        
+        return {
+            "transcript": transcript,
+            "sql_query": sql_query,
+            "results": results
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    finally:
+        if os.path.exists(temp_filename):
+            os.remove(temp_filename)

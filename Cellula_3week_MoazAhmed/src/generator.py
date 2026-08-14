@@ -52,6 +52,20 @@ class ResponseGenerator:
         {input}
         """
         self.generate_prompt = PromptTemplate(input_variables=["history", "context", "input"], template=generate_temp)
+        
+        voice_temp = """You are an expert SQL database administrator. Your job is to translate spoken user commands into executable SQL queries.
+        STRICT RULES:
+        1. Output ONLY the executable SQL query. Do not include markdown code blocks (like ```sql), conversational text, or explanations.
+        2. Read the "Database Schema" section below to find the correct table and column names. Never invent tables or columns.
+        3. Base your query strictly on the user's spoken command. Do not add external instructions, filters, or logic not mentioned by the user.
+
+        ### Database Schema:
+        {schema}
+
+        ### Spoken Command:
+        {input}
+        """
+        self.voice_prompt = PromptTemplate(input_variables=['schema','input'], template=voice_temp)
 
     def explain_answer(self, query: str):
         history = self.memory.load_memory_variables({})["history"]
@@ -76,10 +90,15 @@ class ResponseGenerator:
         response_stream = self.model.stream(prompt_str)
         
         return response_stream
+    
+    def generate_sql(self, query: str, schema: str):
+        prompt_str = self.voice_prompt.format(
+            schema=schema,
+            input=query
+        )
+        res = self.model.invoke(prompt_str)
+        raw_sql = res.content.strip()
+        return raw_sql
 
     def save_to_memory(self, query: str, final_response: str):
-        """
-        Because we are streaming the output in Streamlit, we must manually 
-        save the final compiled string to LangChain's memory after it finishes streaming.
-        """
         self.memory.save_context({"input": query}, {"output": final_response})

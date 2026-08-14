@@ -1,52 +1,14 @@
 # app.py
-import os
-import sys
-__import__('pysqlite3')
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-from dotenv import load_dotenv
 import re
-
-# 1. LOAD ENV VARS FIRST
-load_dotenv()
-d_path = os.getenv("D_PATH")
-if d_path:
-    os.environ['HF_HOME'] = d_path
-
+import requests
 import streamlit as st
-from src.embedder import VectorEmbedder
-from src.vectorStore import ChromaStore
-from src.grader2 import RelevanceGrader
-from src.generator import ResponseGenerator
-from src.intentClassifier import IntentClassifier
-from src.reformulator import QueryReformulator
-from src.executor import CodeExecutor
+import pandas as pd
 
-st.set_page_config(page_title="Corrective RAG Copilot", layout="wide")
-st.title("LLM Coding")
+API_BASE_URL = "http://localhost:8000"
 
-# 4. Load Shared Resources
-@st.cache_resource
-def load_shared_resources():
-    embedder = VectorEmbedder()
-    store = ChromaStore(embedding_model=embedder.get_embedding_model())
-    store.load()
-    grader = RelevanceGrader(threshold=0.5) 
-    intent_cls = IntentClassifier()
-    reformulator = QueryReformulator()
-    return store, grader, intent_cls, reformulator
+st.set_page_config(page_title="AI Multi-Modal Copilot", layout="wide")
+st.title("AI Code & Database Copilot")
 
-store, grader, intent_cls, reformulator = load_shared_resources()
-
-# Sidebar Stats
-st.sidebar.header("Database Info")
-try:
-    st.sidebar.metric("Indexed Chunks in DB", store.vector_db._collection.count())
-except Exception:
-    st.sidebar.write("Collection loading...")
-
-# 5. Initialize Session State
-if "generator" not in st.session_state:
-    st.session_state.generator = ResponseGenerator()
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "awaiting_user_solution" not in st.session_state:
@@ -54,115 +16,140 @@ if "awaiting_user_solution" not in st.session_state:
 if "unanswered_query" not in st.session_state:
     st.session_state.unanswered_query = ""
 
-# 6. Render Chat History & Secure Execution Buttons
-for idx, msg in enumerate(st.session_state.messages):
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+tab1, tab2 = st.tabs(["LLM Coding", "Speech to text"])
+
+
+with tab1:
+    for idx, msg in enumerate(st.session_state.messages):
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
+            
+            if msg["role"] == "assistant" and "```python" in msg["content"]:
+                if st.button("Execute Code", key=f"exec_{idx}"):
+                    code_match = re.search(r"```python(.*?)```", msg["content"], re.DOTALL)
+                    if code_match:
+                        code_to_run = code_match.group(1).strip()
+                        with st.spinner("Running code on backend sandbox..."):
+                            try:
+                                res = requests.post(
+                                    f"{API_BASE_URL}/api/execute",
+                                    json={"code": code_to_run},
+                                    timeout=15
+                                )
+                                result = res.json()
+                                if result.get("success"):
+                                    st.success("Execution Output:")
+                                    st.code(result.get("output"), language="text")
+                                else:
+                                    st.error("Execution Error:")
+                                    st.code(result.get("output"), language="text")
+                            except Exception as e:
+                                st.error(f"Failed to connect to backend: {e}")
+
+    if prompt := st.chat_input("Ask a coding question or explain a concept..."):
+        st.session_state.awaiting_user_solution = False
+        st.session_state.messages.append({"role": "user", "content": prompt})
         
-        # NEW: Only show button if role is assistant AND intent is GENERATE
-        if msg["role"] == "assistant" and msg.get("intent") == "GENERATE" and "```python" in msg["content"]:
-            if st.button("Execute Code", key=f"exec_{idx}"):
-                code_match = re.search(r"```python(.*?)```", msg["content"], re.DOTALL)
-                if code_match:
-                    with st.spinner("Executing code..."):
-                        out, success = CodeExecutor.execute_python_code(code_match.group(1))
-                        if success:
-                            st.success("Execution Output:")
-                            st.code(out, language="text")
-                        else:
-                            st.error("Execution / Assertion Error:")
-                            st.code(out, language="text")
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-# 7. Main Chat Processing Loop
-if prompt := st.chat_input("Ask a coding question..."):
-    st.session_state.awaiting_user_solution = False
-    
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
+        payload = {
+            "prompt": prompt,
+            "history": st.session_state.messages[:-1]
+        }
 
-    # Step A: Reformulate Query (Preserves standalone queries)
-    with st.spinner("Analyzing context..."):
-        standalone_prompt = reformulator.reformulate(prompt, st.session_state.messages[:-1])
-        if standalone_prompt != prompt:
-            st.caption(f"*(Context applied: {standalone_prompt})*")
-
-    # Step B: Classify Intent
-    with st.spinner("Classifying intent..."):
-        # CHANGED: We now pass the original `prompt` so the classifier sees action verbs!
-        intent = intent_cls.classify(prompt)
-        st.toast(f"Intent Detected: **{intent}**")
-
-    # Step C: Execute Intent Path
-    if intent == "EXPLAIN":
         with st.chat_message("assistant"):
-            stream = st.session_state.generator.explain_answer(standalone_prompt)
-            full_response = st.write_stream(stream)
-            
-        st.session_state.generator.save_to_memory(standalone_prompt, full_response)
-        st.session_state.messages.append({"role": "assistant", "content": full_response, "intent": "EXPLAIN"})
-        st.rerun()
+            try:
+                response = requests.post(
+                    f"{API_BASE_URL}/api/chat",
+                    json=payload,
+                    stream=True,
+                    timeout=60
+                )
 
-    else:
-        with st.spinner("Searching vector store (k=10)..."):
-            raw_docs = store.vector_db.similarity_search(standalone_prompt, k=10)
+                content_type = response.headers.get("content-type", "")
 
-        with st.spinner("Grading chunks with Cross-Encoder..."):
-            verified_chunks = []
-            for doc in raw_docs:
-                if grader.check_relevance(standalone_prompt, doc.page_content):
+                if "application/json" in content_type:
+                    fallback_data = response.json()
+                    warning_msg = fallback_data.get("message", "Context missing in vector DB.")
+                    st.warning(warning_msg)
                     
-                    test_code = doc.metadata.get("test_code", "# No official tests available.")
-                    
-                    solution_code = doc.metadata.get("solution", "# No official solution provided.") 
-                    
-                    combined_chunk = (
-                        f"Code Reference (Prompt):\n{doc.page_content}\n\n"
-                        f"Official Solution:\n{solution_code}\n\n"
-                        f"Official Tests:\n{test_code}"
+                    st.session_state.awaiting_user_solution = True
+                    st.session_state.unanswered_query = fallback_data.get("unanswered_query", prompt)
+                    st.session_state.messages.append({"role": "assistant", "content": warning_msg})
+                else:
+                    def token_stream():
+                        for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
+                            if chunk:
+                                yield chunk
+
+                    full_response = st.write_stream(token_stream())
+                    st.session_state.messages.append({"role": "assistant", "content": full_response})
+                    st.rerun()
+
+            except Exception as e:
+                st.error(f"Error communicating with backend: {e}")
+
+    if st.session_state.awaiting_user_solution:
+        st.markdown("---")
+        st.info(f"**Teach the System:** Provide a verified solution for *'{st.session_state.unanswered_query}'*:")
+        user_code = st.text_area("Paste Python Code:", height=150)
+        
+        if st.button("Save Solution to Vector DB"):
+            if user_code.strip():
+                try:
+                    res = requests.post(
+                        f"{API_BASE_URL}/api/solution",
+                        json={
+                            "query": st.session_state.unanswered_query,
+                            "code": user_code.strip()
+                        }
                     )
-                    verified_chunks.append(combined_chunk)
+                    if res.status_code == 200:
+                        st.success("Solution saved into Vector DB! Re-enter your query to test.")
+                        st.session_state.awaiting_user_solution = False
+                        st.rerun()
+                    else:
+                        st.error(f"Backend error: {res.text}")
+                except Exception as e:
+                    st.error(f"Could not reach backend: {e}")
+            else:
+                st.error("Please enter valid code before saving.")
 
-        if len(verified_chunks) == 0:
-            st.session_state.awaiting_user_solution = True
-            st.session_state.unanswered_query = standalone_prompt
-            
-            warning_msg = f"Cross-Encoder rejected all {len(raw_docs)} retrieved chunks. Context missing in DB."
-            with st.chat_message("assistant"):
-                st.warning(warning_msg)
-            # Add intent here as well to prevent button rendering errors on fallbacks
-            st.session_state.messages.append({"role": "assistant", "content": warning_msg, "intent": "GENERATE"})
 
-        # Successful Retrieval Generation
-        else:
-            with st.chat_message("assistant"):
-                st.caption(f"Verified {len(verified_chunks)} chunk(s). Generating...")
-                stream = st.session_state.generator.generate_answer(standalone_prompt, verified_chunks)
-                full_response = st.write_stream(stream)
 
-            st.session_state.generator.save_to_memory(standalone_prompt, full_response)
-            st.session_state.messages.append({"role": "assistant", "content": full_response, "intent": "GENERATE"})
-            st.rerun()
+with tab2:
+    st.header("Voice to SQL Database Query")
+    st.markdown("Record your spoken request. The FastAPI backend will transcribe, generate SQL, and execute it on SQLite.")
 
-# 8. Human-in-the-Loop Active Learning Form
-if st.session_state.awaiting_user_solution:
-    st.markdown("---")
-    st.info(f"**Teach the System:** Provide a solution for *'{st.session_state.unanswered_query}'*:")
-    user_code = st.text_area("Paste Python Code:", height=150)
-    
-    if st.button("Save Solution to Vector DB"):
-        if user_code.strip():
-            enriched_code = f"# Task: {st.session_state.unanswered_query}\n\n{user_code.strip()}"
-            store.add_document(
-                code_text=enriched_code, 
-                metadata={
-                    "source": "user_contribution", 
-                    "original_query": st.session_state.unanswered_query,
-                    "test_code": "# User contribution - no dataset test available."
+    audio_value = st.audio_input("Record audio command:")
+
+    if audio_value:
+        with st.spinner("Processing speech on FastAPI backend..."):
+            try:
+                files = {
+                    "audio_file": ("voice_command.wav", audio_value.getvalue(), "audio/wav")
                 }
-            )
-            st.success("Solution saved! Run your query again.")
-            st.session_state.awaiting_user_solution = False
-            st.rerun()
-        else:
-            st.error("Please enter valid code before saving.")
+                
+                res = requests.post(f"{API_BASE_URL}/api/voice-query", files=files, timeout=45)
+                
+                if res.status_code == 200:
+                    data = res.json()
+                    
+                    st.success(f"**Transcript:** \"{data.get('transcript')}\"")
+                    
+                    st.info("**Generated SQL Query:**")
+                    st.code(data.get("sql_query"), language="sql")
+                    
+                    st.write("### Database Results")
+                    results_list = data.get("results", [])
+                    if results_list:
+                        df = pd.DataFrame(results_list)
+                        st.dataframe(df, use_container_width=True)
+                    else:
+                        st.warning("Query executed successfully, but returned 0 rows.")
+                else:
+                    st.error(f"Backend Error ({res.status_code}): {res.text}")
+                    
+            except Exception as e:
+                st.error(f"Failed to connect to FastAPI backend: {e}")
