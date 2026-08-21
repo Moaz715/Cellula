@@ -1,5 +1,5 @@
 import os
-import whisper
+from faster_whisper import WhisperModel
 from urllib.parse import urlparse
 
 from langchain_classic.document_loaders import (
@@ -18,6 +18,7 @@ class Loader:
             "pdf": PyPDFLoader,
             "docx": Docx2txtLoader,
             "txt": TextLoader,
+            "md": TextLoader,
             "pptx": UnstructuredPowerPointLoader,
             "ppt": UnstructuredPowerPointLoader,
             "py": TextLoader,
@@ -26,8 +27,8 @@ class Loader:
             "cpp": TextLoader
         }
         
-        self.audio_model = whisper.load_model("base") 
-        
+        self.audio_model = WhisperModel("base", device="cpu", compute_type="int8")        
+    
     def _is_url(self, path):
         try:
             result = urlparse(path)

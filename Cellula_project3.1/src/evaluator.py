@@ -1,5 +1,6 @@
 import os
 from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from langchain_classic.memory import ConversationBufferWindowMemory
 from langchain_core.prompts import PromptTemplate
 from dotenv import load_dotenv
@@ -8,12 +9,11 @@ load_dotenv()
 
 class Evaluator:
     def __init__(self):
-        self.model = ChatOpenAI(
-            api_key=os.getenv("API_KEY"),
-            base_url='https://openrouter.ai/api/v1',
-            model='openrouter/free',
+        self.model = ChatGroq(
+            model="openai/gpt-oss-120b",
+            api_key=os.getenv('GROQ_KEY'),
             temperature=0.0,
-            streaming=False
+            max_retries=2
         )
         
         self.memory = ConversationBufferWindowMemory(k=5, memory_key="history")
@@ -51,8 +51,12 @@ class Evaluator:
             answer=answer,
             context=combined_context,
         )
+        response = self.model.invoke(prompt_str)
+        verdict_text = response.content or ""
+                
+        print(f"Evaluator Verdict:\n{verdict_text}")
+        return verdict_text
         
-        return self.model.invoke(prompt_str).content
 
     def save_to_memory(self, query: str, final_response: str):
         self.memory.save_context({"input": query}, {"output": final_response})

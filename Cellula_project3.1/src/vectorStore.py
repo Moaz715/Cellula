@@ -1,6 +1,6 @@
 from langchain_chroma import Chroma
 import uuid
-class VectorStore:
+class Store:
     def __init__(self, embedder_model):
         self.db = Chroma(
             collection_name="rag_collection",
