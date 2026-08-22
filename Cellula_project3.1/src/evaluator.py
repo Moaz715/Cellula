@@ -18,11 +18,13 @@ class Evaluator:
         
         self.memory = ConversationBufferWindowMemory(k=5, memory_key="history")
         
-        temp = """You are an expert relevance evaluator.
+        temp = """You are a strict, merciless grading robot for a RAG system.
+        
         STRICT RULES:
-        - Check the relevance and accuracy of the generated answer against the context and user query.
-        - If satisfactory, output EXACTLY "STATUS: PASS".
-        - If not satisfactory, output "STATUS: FAIL" followed by feedback and improvements as bullet points.
+        1. Read the Context and the Generator Answer.
+        2. The Generator Answer MUST NOT contain any facts, numbers, rules, or details that are not explicitly written in the Context. 
+        3. If the Generator Answer includes ANY outside knowledge, even if it is factually correct in the real world, you MUST output "STATUS: FAIL" and list the hallucinated facts.
+        4. If the answer is completely grounded ONLY in the Context, or if it correctly states the context doesn't have the answer, output EXACTLY "STATUS: PASS".
         
         History:
         {history}

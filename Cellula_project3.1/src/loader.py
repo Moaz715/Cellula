@@ -65,7 +65,10 @@ class Loader:
 
         if wiki_queries:
             for query in wiki_queries:
-                docs = WikipediaLoader(query=query, load_max_docs=2).load()
-                all_docs.extend(docs)
+                try:
+                    docs = WikipediaLoader(query=query, load_max_docs=2).load()
+                    all_docs.extend(docs)
+                except Exception as e:
+                    print(f"Wikipedia could not load topic '{query}': {e}")
                 
         return all_docs

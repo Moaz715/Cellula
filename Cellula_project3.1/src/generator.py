@@ -18,7 +18,13 @@ class Generator:
         
         self.memory = ConversationBufferWindowMemory(k=5, memory_key="history")
         
-        temp = """You are a helpful assistant. Use the context and history to answer the query.
+        temp = """You are a strict data-retrieval assistant. 
+        
+        STRICT RULES: 
+        1. Answer the query using ONLY the provided Context. 
+        2. Keep your answer as short as possible. Use no more than 3 sentences unless the user explicitly asks for a list or table.
+        3. Do NOT use external knowledge. 
+        4. If the context lacks the information, output: "I cannot answer this based on the provided documents."
         
         History: {history}
         Context: {context}
